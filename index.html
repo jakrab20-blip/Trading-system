@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OB-LIQ Reader — SMC Screenshot Analyzer</title>
+<style>
+  :root{
+    --bg:#0A0E1A;
+    --panel:#121A2C;
+    --panel2:#0E1526;
+    --line:#232C42;
+    --text:#E8ECF5;
+    --muted:#7C8AA8;
+    --bull:#3ECF8E;
+    --bear:#FF6B7A;
+    --liq:#F5A94E;
+    --eq:#7DD3FC;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);}
+
+  header{padding:20px 20px 14px;border-bottom:1px solid var(--line);}
+  header h1{margin:0 0 4px;font-size:20px;font-weight:700;letter-spacing:-0.01em;}
+  header p{margin:0;color:var(--muted);font-size:13px;}
+
+  .layout{display:flex;flex-direction:column;gap:0;}
+  @media(min-width:900px){
+    .layout{flex-direction:row;align-items:flex-start;}
+    .canvas-col{flex:1;min-width:0;}
+    .side-col{width:380px;flex-shrink:0;border-left:1px solid var(--line);
+      max-height:calc(100vh - 90px);overflow-y:auto;}
+  }
+
+  .canvas-col{padding:16px;}
+  .drop{border:1.5px dashed var(--line);border-radius:10px;padding:28px 16px;
+    text-align:center;color:var(--muted);font-size:14px;cursor:pointer;
+    transition:border-color .15s;}
+  .drop:hover, .drop.drag{border-color:var(--liq);color:var(--text);}
+  .drop input{display:none;}
+
+  #stage{position:relative;width:100%;border-radius:10px;overflow:hidden;
+    border:1px solid var(--line);background:#05070D;display:none;}
+  #stage.active{display:block;}
+  #chartCanvas{display:block;width:100%;height:auto;cursor:crosshair;touch-action:none;}
+  #hint{position:absolute;top:10px;left:10px;background:rgba(10,14,26,.85);
+    border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:12.5px;
+    color:var(--text);max-width:80%;pointer-events:none;}
+  #hint b{color:var(--liq);}
+
+  .toolbar{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  .toolbar button{background:var(--panel2);}
+
+  .side-col{padding:16px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:14px;margin-bottom:12px;}
+  .card h2{margin:0 0 10px;font-size:12.5px;text-transform:none;color:var(--liq);
+    font-weight:600;display:flex;align-items:center;gap:6px;}
+  .card h2 .n{width:18px;height:18px;border-radius:50%;background:var(--liq);
+    color:#1a1200;font-size:11px;display:inline-flex;align-items:center;justify-content:center;
+    font-weight:700;}
+  .card.done h2 .n{background:var(--bull);color:#062015;}
+  .row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+  .row:last-child{margin-bottom:0;}
+
+  button{appearance:none;border:1px solid var(--line);background:var(--panel2);
+    color:var(--text);padding:8px 12px;border-radius:7px;font-size:13px;cursor:pointer;
+    font-family:inherit;transition:border-color .15s, background .15s;}
+  button:hover{border-color:var(--muted);}
+  button.primary{background:var(--liq);color:#1a1200;border-color:var(--liq);font-weight:600;}
+  button.primary:hover{filter:brightness(1.08);}
+  button.on{background:var(--eq);color:#04202b;border-color:var(--eq);font-weight:600;}
+  button.small{padding:5px 9px;font-size:12px;}
+  button:disabled{opacity:.35;cursor:not-allowed;}
+  button.seg{flex:1;}
+
+  label{font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px;}
+  input[type=number], input[type=text]{width:100%;background:var(--panel2);
+    border:1px solid var(--line);color:var(--text);padding:7px 9px;border-radius:6px;
+    font-family:var(--mono);font-size:13px;}
+  .field{flex:1;min-width:0;}
+
+  .chk{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;
+    border-bottom:1px solid var(--line);cursor:pointer;}
+  .chk:last-child{border-bottom:none;}
+  .chk input{width:16px;height:16px;accent-color:var(--liq);}
+  .chk .pts{margin-left:auto;font-family:var(--mono);color:var(--muted);font-size:12px;}
+
+  .readout{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;
+    border-bottom:1px dashed var(--line);}
+  .readout:last-child{border-bottom:none;}
+  .readout span:last-child{font-family:var(--mono);color:var(--text);}
+
+  .scorebox{text-align:center;padding:14px 0 6px;}
+  .grade{font-size:44px;font-weight:800;line-height:1;font-family:var(--mono);}
+  .grade.A{color:var(--bull);}
+  .grade.B{color:var(--liq);}
+  .grade.C{color:var(--muted);}
+  .gradelabel{font-size:12px;color:var(--muted);margin-top:4px;}
+  .scorebar{height:6px;border-radius:3px;background:var(--panel2);margin:12px 0 4px;
+    overflow:hidden;}
+  .scorebar i{display:block;height:100%;background:var(--liq);transition:width .2s;}
+  .verdict{margin-top:10px;padding:10px;border-radius:8px;font-size:13px;font-weight:600;
+    text-align:center;}
+  .verdict.go{background:rgba(62,207,142,.12);color:var(--bull);border:1px solid rgba(62,207,142,.3);}
+  .verdict.no{background:rgba(124,138,168,.1);color:var(--muted);border:1px solid var(--line);}
+
+  select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    padding:7px 9px;border-radius:6px;font-size:13px;font-family:inherit;}
+
+  .planrow{display:flex;justify-content:space-between;align-items:center;padding:7px 0;
+    border-bottom:1px solid var(--line);font-size:13px;}
+  .planrow:last-child{border-bottom:none;}
+  .planrow .tag{font-size:11px;padding:2px 7px;border-radius:5px;font-weight:600;}
+  .tag.entry{background:rgba(245,169,78,.15);color:var(--liq);}
+  .tag.sl{background:rgba(255,107,122,.15);color:var(--bear);}
+  .tag.tp{background:rgba(62,207,142,.15);color:var(--bull);}
+  .planrow b{font-family:var(--mono);font-size:14px;}
+
+  footer{padding:16px;text-align:center;color:var(--muted);font-size:11.5px;}
+  .resetlink{color:var(--muted);text-decoration:underline;cursor:pointer;background:none;
+    border:none;padding:0;font-size:12px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OB-LIQ Reader</h1>
+  <p>อ่านภาพกราฟ → ทำเครื่องหมาย Order Block &amp; Liquidity ด้วยมือ → ระบบให้คะแนนและแผนเทรดแบบ SMC</p>
+</header>
+
+<div class="layout">
+
+  <div class="canvas-col">
+    <div class="drop" id="drop">
+      <div id="dropText">แตะเพื่อเลือกภาพกราฟ หรือวางภาพที่คัดลอกไว้ (Ctrl/Cmd+V)</div>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+
+    <div id="stage">
+      <canvas id="chartCanvas"></canvas>
+      <div id="hint"></div>
+    </div>
+
+    <div class="toolbar" id="toolbar" style="display:none;">
+      <button class="small" id="btnRescale">โหลดภาพใหม่</button>
+      <button class="small resetlink" id="btnClearMarks">ล้างจุดที่ทำเครื่องหมายทั้งหมด</button>
+    </div>
+  </div>
+
+  <div class="side-col">
+
+    <div class="card" id="cardCalib">
+      <h2><span class="n">1</span> ตั้งค่าสเกลราคา</h2>
+      <p style="margin:0 0 8px;font-size:12.5px;color:var(--muted);">
+        คลิกจุด 2 จุดบนภาพที่รู้ราคาแน่นอน (เช่น เส้นราคาบนแกนขวา) แล้วกรอกราคาของแต่ละจุด
+      </p>
+      <div class="row">
+        <button class="seg" id="btnCalib1">① จุดที่ 1 บนภาพ</button>
+        <button class="seg" id="btnCalib2">② จุดที่ 2 บนภาพ</button>
+      </div>
+      <div class="row">
+        <div class="field"><label>ราคาจุดที่ 1</label><input type="number" step="any" id="calibPrice1"></div>
+        <div class="field"><label>ราคาจุดที่ 2</label><input type="number" step="any" id="calibPrice2"></div>
+      </div>
+    </div>
+
+    <div class="card" id="cardOB">
+      <h2><span class="n">2</span> โซน Order Block</h2>
+      <div class="row">
+        <button class="seg" id="btnBull">Bullish OB</button>
+        <button class="seg" id="btnBear">Bearish OB</button>
+      </div>
+      <div class="row">
+        <button class="seg" id="btnOBTop">① ขอบบนแท่ง</button>
+        <button class="seg" id="btnOBBot">② ขอบล่างแท่ง</button>
+      </div>
+      <div class="readout"><span>ราคา Top</span><span id="obTopVal">—</span></div>
+      <div class="readout"><span>ราคา Bottom</span><span id="obBotVal">—</span></div>
+    </div>
+
+    <div class="card" id="cardLiq">
+      <h2><span class="n">3</span> แนว Liquidity</h2>
+      <div class="row">
+        <button class="seg" id="btnLiq">① คลิกแนว Swing ที่จะกวาด</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="chkEq"> เป็น Equal High/Low (แนวราคาเท่ากันซ้ำ)
+        <span class="pts">+1</span></label>
+      <div class="readout"><span>ราคา Liquidity</span><span id="liqVal">—</span></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">4</span> คะแนนคุณภาพ OB</h2>
+      <label class="chk"><input type="checkbox" id="chkDisp"> แรงคลื่น Displacement ชัดเจน
+        <span class="pts">+1</span></label>
+      <label class="chk"><input type="checkbox" id="chkFvg"> มี Fair Value Gap (FVG) ในคลื่น
+        <span class="pts">+1</span></label>
+      <label class="chk"><input type="checkbox" id="chkHtf"> ตรงทิศทางเทรนด์ TF ใหญ่
+        <span class="pts">+1</span></label>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">5</span> สถานะราคา</h2>
+      <label class="chk"><input type="checkbox" id="chkSwept"> ราคากวาด Liquidity แล้ว
+        <span class="pts">+1</span></label>
+      <div class="row" style="margin-top:8px;">
+        <label style="margin:0;flex:1;">ปฏิกิริยาที่ OB
+          <select id="selReaction" style="margin-top:4px;">
+            <option value="pending">ยังไม่ชนโซน / รอ</option>
+            <option value="reject">Reject — ปิดเด้งออกนอกโซน</option>
+            <option value="fail">OB Fail — ปิดทะลุโซน</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">6</span> คะแนนรวม &amp; เกรด</h2>
+      <div class="scorebox">
+        <div class="grade C" id="gradeText">C</div>
+        <div class="gradelabel" id="scoreText">คะแนนรวม 0 / 5</div>
+        <div class="scorebar"><i id="scoreBar" style="width:0%"></i></div>
+      </div>
+      <div class="verdict no" id="verdict">ยังทำเครื่องหมายไม่ครบ</div>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">7</span> แผน Entry / SL / TP</h2>
+      <div class="row">
+        <button class="seg" id="btnCurrent">① คลิกราคาปัจจุบันบนภาพ</button>
+      </div>
+      <div class="row">
+        <div class="field"><label>ราคาปัจจุบัน (หรือพิมพ์เอง)</label>
+          <input type="number" step="any" id="currentPrice"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>SL Buffer (หน่วยราคา)</label>
+          <input type="number" step="any" id="slBuffer" value="0"></div>
+        <div class="field"><label>Risk:Reward</label>
+          <input type="number" step="0.5" id="rrMult" value="2"></div>
+      </div>
+      <div style="margin-top:10px;">
+        <div class="planrow"><span class="tag entry">ENTRY</span><b id="planEntry">—</b></div>
+        <div class="planrow"><span class="tag sl">SL</span><b id="planSL">—</b></div>
+        <div class="planrow"><span class="tag tp">TP</span><b id="planTP">—</b></div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="seg" id="btnCopy">คัดลอกสรุปแผนเทรด</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>ทุกจุด/ราคาที่กรอกไว้จะหายเมื่อรีเฟรชหน้า — ไม่มีการส่งข้อมูลออกจากเบราว์เซอร์</footer>
+
+<script>
+(function(){
+  const canvas = document.getElementById('chartCanvas');
+  const ctx = canvas.getContext('2d');
+  const stage = document.getElementById('stage');
+  const hint = document.getElementById('hint');
+  const drop = document.getElementById('drop');
+  const fileInput = document.getElementById('fileInput');
+  const toolbar = document.getElementById('toolbar');
+
+  let img = null;
+  let mode = null; // 'calib1'|'calib2'|'obTop'|'obBot'|'liq'|'current'
+  let obSide = 'bull';
+
+  const pts = { calib1:null, calib2:null, obTop:null, obBot:null, liq:null, current:null };
+
+  // ---------- image load ----------
+  function loadImage(file){
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const im = new Image();
+      im.onload = ()=>{
+        img = im;
+        const maxW = canvas.parentElement.clientWidth;
+        const scale = Math.min(1, maxW / im.width);
+        canvas.width = im.width * scale;
+        canvas.height = im.height * scale;
+        stage.classList.add('active');
+        toolbar.style.display = 'flex';
+        drop.style.display = 'none';
+        Object.keys(pts).forEach(k=>pts[k]=null);
+        redraw();
+        updateAll();
+      };
+      im.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  drop.addEventListener('click', ()=>fileInput.click());
+  fileInput.addEventListener('change', e=>{ if(e.target.files[0]) loadImage(e.target.files[0]); });
+  ['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault();drop.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault();drop.classList.remove('drag');}));
+  drop.addEventListener('drop', e=>{ if(e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]); });
+  window.addEventListener('paste', e=>{
+    const items = e.clipboardData && e.clipboardData.items;
+    if(!items) return;
+    for(const it of items){ if(it.type.indexOf('image')===0){ loadImage(it.getAsFile()); break; } }
+  });
+  document.getElementById('btnRescale').addEventListener('click', ()=>{
+    stage.classList.remove('active'); toolbar.style.display='none';
+    drop.style.display='block'; img=null;
+  });
+  document.getElementById('btnClearMarks').addEventListener('click', ()=>{
+    Object.keys(pts).forEach(k=>pts[k]=null);
+    redraw(); updateAll();
+  });
+
+  // ---------- mode buttons ----------
+  function setMode(m, label){
+    mode = m;
+    hint.style.display='block';
+    hint.innerHTML = '<b>คลิกบนภาพ</b> เพื่อ' + label;
+  }
+  document.getElementById('btnCalib1').addEventListener('click', ()=>setMode('calib1','ตั้งจุดอ้างอิงราคาที่ 1'));
+  document.getElementById('btnCalib2').addEventListener('click', ()=>setMode('calib2','ตั้งจุดอ้างอิงราคาที่ 2'));
+  document.getElementById('btnOBTop').addEventListener('click', ()=>setMode('obTop','กำหนดขอบบนของแท่ง OB'));
+  document.getElementById('btnOBBot').addEventListener('click', ()=>setMode('obBot','กำหนดขอบล่างของแท่ง OB'));
+  document.getElementById('btnLiq').addEventListener('click', ()=>setMode('liq','กำหนดแนว Liquidity'));
+  document.getElementById('btnCurrent').addEventListener('click', ()=>setMode('current','กำหนดราคาปัจจุบัน'));
+
+  document.getElementById('btnBull').addEventListener('click', ()=>{ obSide='bull'; syncSideButtons(); redraw(); });
+  document.getElementById('btnBear').addEventListener('click', ()=>{ obSide='bear'; syncSideButtons(); redraw(); });
+  function syncSideButtons(){
+    document.getElementById('btnBull').classList.toggle('on', obSide==='bull');
+    document.getElementById('btnBear').classList.toggle('on', obSide==='bear');
+  }
+  syncSideButtons();
+
+  canvas.addEventListener('click', e=>{
+    if(!mode || !img) return;
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) * (canvas.width / r.width);
+    const y = (e.clientY - r.top) * (canvas.height / r.height);
+    pts[mode] = {x,y};
+    mode = null;
+    hint.style.display='none';
+    redraw();
+    updateAll();
+  });
+
+  // ---------- price mapping ----------
+  function priceAtY(y){
+    const c1 = pts.calib1, c2 = pts.calib2;
+    const p1 = parseFloat(document.getElementById('calibPrice1').value);
+    const p2 = parseFloat(document.getElementById('calibPrice2').value);
+    if(!c1 || !c2 || isNaN(p1) || isNaN(p2) || c1.y===c2.y) return null;
+    return p1 + (p2 - p1) * (y - c1.y) / (c2.y - c1.y);
+  }
+  function fmt(p){ return p===null || isNaN(p) ? '—' : Number(p).toLocaleString(undefined,{maximumFractionDigits:6}); }
+
+  ['calibPrice1','calibPrice2'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', ()=>{ redraw(); updateAll(); });
+  });
+
+  // ---------- drawing ----------
+  function redraw(){
+    if(!img) return;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+
+    const bull = obSide==='bull';
+    const obColor = bull ? '#3ECF8E' : '#FF6B7A';
+
+    // OB zone
+    if(pts.obTop && pts.obBot){
+      const yTop = Math.min(pts.obTop.y, pts.obBot.y);
+      const yBot = Math.max(pts.obTop.y, pts.obBot.y);
+      ctx.fillStyle = hexA(obColor, 0.18);
+      ctx.fillRect(0, yTop, canvas.width, yBot-yTop);
+      ctx.strokeStyle = obColor;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(0, yTop, canvas.width, yBot-yTop);
+      label(fmt(priceAtY(pts.obTop.y)), canvas.width-6, yTop-4, obColor, 'right');
+      label(fmt(priceAtY(pts.obBot.y)), canvas.width-6, yBot+14, obColor, 'right');
+    }
+    // liquidity line
+    if(pts.liq){
+      ctx.strokeStyle = '#F5A94E';
+      ctx.setLineDash([5,4]);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0,pts.liq.y); ctx.lineTo(canvas.width,pts.liq.y); ctx.stroke();
+      ctx.setLineDash([]);
+      label('Liquidity ' + fmt(priceAtY(pts.liq.y)), 6, pts.liq.y-4, '#F5A94E', 'left');
+    }
+    // current price
+    if(pts.current){
+      ctx.strokeStyle = '#7DD3FC';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(0,pts.current.y); ctx.lineTo(canvas.width,pts.current.y); ctx.stroke();
+      label('Current ' + fmt(priceAtY(pts.current.y)), 6, pts.current.y+14, '#7DD3FC', 'left');
+    }
+    // calib markers
+    [['calib1','1'],['calib2','2']].forEach(([k,n])=>{
+      if(pts[k]){
+        ctx.fillStyle = '#E8ECF5';
+        ctx.beginPath(); ctx.arc(pts[k].x,pts[k].y,4,0,7); ctx.fill();
+        label('ref '+n, pts[k].x+8, pts[k].y-8, '#E8ECF5', 'left');
+      }
+    });
+  }
+  function label(text,x,y,color,align){
+    ctx.font='600 11px -apple-system,sans-serif';
+    ctx.fillStyle=color; ctx.textAlign=align; ctx.fillText(text,x,y);
+  }
+  function hexA(hex,a){
+    const v = hex.replace('#','');
+    const r=parseInt(v.substr(0,2),16), g=parseInt(v.substr(2,2),16), b=parseInt(v.substr(4,2),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  // ---------- score / plan engine ----------
+  const chkDisp = document.getElementById('chkDisp');
+  const chkFvg = document.getElementById('chkFvg');
+  const chkHtf = document.getElementById('chkHtf');
+  const chkEq = document.getElementById('chkEq');
+  const chkSwept = document.getElementById('chkSwept');
+  const selReaction = document.getElementById('selReaction');
+  const currentPriceInput = document.getElementById('currentPrice');
+  const slBufferInput = document.getElementById('slBuffer');
+  const rrMultInput = document.getElementById('rrMult');
+
+  [chkDisp,chkFvg,chkHtf,chkEq,chkSwept,selReaction,currentPriceInput,slBufferInput,rrMultInput]
+    .forEach(el=>el.addEventListener('input', updateAll));
+
+  function updateAll(){
+    document.getElementById('obTopVal').textContent = pts.obTop ? fmt(priceAtY(pts.obTop.y)) : '—';
+    document.getElementById('obBotVal').textContent = pts.obBot ? fmt(priceAtY(pts.obBot.y)) : '—';
+    document.getElementById('liqVal').textContent = pts.liq ? fmt(priceAtY(pts.liq.y)) : '—';
+
+    if(pts.current && !currentPriceInput.dataset.userEdited){
+      const p = priceAtY(pts.current.y);
+      if(p!==null) currentPriceInput.value = Number(p.toFixed(6));
+    }
+
+    const qScore = (chkDisp.checked?1:0) + (chkFvg.checked?1:0) + (chkHtf.checked?1:0);
+    const total = qScore + (chkSwept.checked?1:0) + (chkEq.checked?1:0);
+    const grade = total>=4 ? 'A' : total===3 ? 'B' : 'C';
+
+    const gradeEl = document.getElementById('gradeText');
+    gradeEl.textContent = grade;
+    gradeEl.className = 'grade ' + grade;
+    document.getElementById('scoreText').textContent = 'คะแนนรวม ' + total + ' / 5 (คุณภาพ OB ' + qScore + '/3)';
+    document.getElementById('scoreBar').style.width = (total/5*100)+'%';
+
+    const verdict = document.getElementById('verdict');
+    const ready = pts.obTop && pts.obBot && pts.liq;
+    if(!ready){
+      verdict.className='verdict no';
+      verdict.textContent='ยังทำเครื่องหมายไม่ครบ (ต้องมี OB บน/ล่าง และ Liquidity)';
+    } else if(selReaction.value==='fail'){
+      verdict.className='verdict no';
+      verdict.textContent='OB Fail — ราคาทะลุโซน ไม่ควรเข้า';
+    } else if(selReaction.value==='reject' && total>=2){
+      verdict.className='verdict go';
+      verdict.textContent='สัญญาณผ่านเกณฑ์ — เกรด '+grade+' ('+(obSide==='bull'?'Bullish':'Bearish')+')';
+    } else if(selReaction.value==='reject'){
+      verdict.className='verdict no';
+      verdict.textContent='Reject แล้วแต่คะแนนรวมต่ำกว่าเกณฑ์ขั้นต่ำ (2)';
+    } else {
+      verdict.className='verdict no';
+      verdict.textContent='รอราคาชนโซนและปิดยืนยันปฏิกิริยา';
+    }
+
+    // plan
+    const top = pts.obTop ? priceAtY(pts.obTop.y) : null;
+    const bot = pts.obBot ? priceAtY(pts.obBot.y) : null;
+    const entry = parseFloat(currentPriceInput.value);
+    const buf = parseFloat(slBufferInput.value)||0;
+    const rr = parseFloat(rrMultInput.value)||2;
+
+    let sl=null, tp=null;
+    if(top!==null && bot!==null && !isNaN(entry)){
+      const hi = Math.max(top,bot), lo = Math.min(top,bot);
+      if(obSide==='bull'){
+        sl = lo - buf;
+        tp = entry + (entry-sl)*rr;
+      } else {
+        sl = hi + buf;
+        tp = entry - (sl-entry)*rr;
+      }
+    }
+    document.getElementById('planEntry').textContent = isNaN(entry) ? '—' : fmt(entry);
+    document.getElementById('planSL').textContent = sl===null ? '—' : fmt(sl);
+    document.getElementById('planTP').textContent = tp===null ? '—' : fmt(tp);
+  }
+  currentPriceInput.addEventListener('input', ()=>{ currentPriceInput.dataset.userEdited='1'; updateAll(); });
+
+  document.getElementById('btnCopy').addEventListener('click', ()=>{
+    const side = obSide==='bull' ? 'Bullish' : 'Bearish';
+    const grade = document.getElementById('gradeText').textContent;
+    const scoreText = document.getElementById('scoreText').textContent;
+    const summary =
+`OB-LIQ Reader — สรุปแผนเทรด
+ทิศทาง: ${side} OB
+เกรด: ${grade} (${scoreText})
+OB Top: ${document.getElementById('obTopVal').textContent}
+OB Bottom: ${document.getElementById('obBotVal').textContent}
+Liquidity: ${document.getElementById('liqVal').textContent}
+Entry: ${document.getElementById('planEntry').textContent}
+SL: ${document.getElementById('planSL').textContent}
+TP: ${document.getElementById('planTP').textContent}
+ปฏิกิริยา: ${selReaction.options[selReaction.selectedIndex].text}`;
+    navigator.clipboard && navigator.clipboard.writeText(summary).catch(()=>{});
+    const btn = document.getElementById('btnCopy');
+    const old = btn.textContent;
+    btn.textContent = 'คัดลอกแล้ว ✓';
+    setTimeout(()=>btn.textContent=old, 1500);
+  });
+
+  window.addEventListener('resize', ()=>{
+    if(!img) return;
+    const maxW = canvas.parentElement.clientWidth;
+    const scale = Math.min(1, maxW / img.width);
+    const newW = img.width*scale, newH = img.height*scale;
+    const rx = newW/canvas.width, ry = newH/canvas.height;
+    Object.keys(pts).forEach(k=>{ if(pts[k]){ pts[k].x*=rx; pts[k].y*=ry; } });
+    canvas.width=newW; canvas.height=newH;
+    redraw();
+  });
+})();
+</script>
+</body>
+</html>
